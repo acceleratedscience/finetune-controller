@@ -1,0 +1,54 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+# fail_fast: true # fix files incrementally
+
+repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v5.0.0
+      hooks:
+          - id: check-ast
+          - id: check-json
+          - id: check-toml
+          - id: check-added-large-files
+          - id: check-merge-conflict
+          - id: check-executables-have-shebangs
+          - id: check-shebang-scripts-are-executable
+          - id: end-of-file-fixer
+          - id: trailing-whitespace
+          - id: debug-statements
+          - id: detect-private-key
+            # files: ^src/
+          - id: forbid-submodules
+          - id: detect-aws-credentials
+            args: ['--allow-missing-credentials']
+          # -   id: pretty-format-json
+          - id: no-commit-to-branch # to not commit to main/master
+            language_version: python3
+
+    # -   repo: https://github.com/asottile/reorder_python_imports
+    #     rev: v3.14.0
+    #     hooks:
+    #     -   id: reorder-python-imports
+    #         args: [--application-directories=app, --py310-plus]
+
+    - repo: https://github.com/asottile/pyupgrade
+      rev: v3.19.1
+      hooks:
+          - id: pyupgrade
+            args: [--py310-plus]
+
+    - repo: https://github.com/astral-sh/ruff-pre-commit
+      # Ruff version.
+      rev: v0.9.2
+      hooks:
+          # Run the formatter.
+          - id: ruff-format
+          # Run the linter.
+          - id: ruff
+            args: [--fix, --exit-non-zero-on-fix]
+# -   repo: https://github.com/pre-commit/mirrors-mypy
+#     rev: v1.14.1
+#     hooks:
+#     -   id: mypy
+#         files: ^app/
+# args: ["--ignore-missing-imports"]

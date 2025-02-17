@@ -1,0 +1,49 @@
+# cluster-flavors.yaml
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: "gpu-medium"
+spec:
+  # nodeLabels:
+  #   instance-type: spot
+  # nodeTaints:
+  # - effect: NoSchedule
+  #   key: nvidia.com/gpu
+  #   value: "g4dn.xlarge"
+  tolerations:
+  - key: "nvidia.com/gpu"
+    value: "g4dn.xlarge"
+    effect: "NoSchedule"
+
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: "gpu-large"
+spec:
+  # nodeLabels:
+  #   instance-type: spot
+  # nodeTaints:
+  # - effect: NoSchedule
+  #   key: nvidia.com/gpu
+  #   value: "g5.24xlarge"
+  tolerations:
+  - key: "nvidia.com/gpu"
+    value: "g5.24xlarge"
+    effect: "NoSchedule"
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ResourceFlavor
+metadata:
+  name: "cpu"
+spec:
+  # nodeLabels:
+  #   instance-type: spot
+  # nodeTaints:
+  # - effect: NoSchedule
+  #   key: openad
+  #   value: "cpu-small"
+  tolerations:
+  - key: "device"
+    value: "cpu"
+    effect: "NoSchedule"

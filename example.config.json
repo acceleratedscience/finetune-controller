@@ -1,0 +1,33 @@
+{
+  "default_queue": "finetune-queue",
+  "workers": [
+    {
+      "name": "cpu",
+      "local_queue": "finetune-queue",
+      "defaults": {
+        "resources": {
+          "requests": {
+            "cpu": 2,
+            "memory": "2Gi"
+          }
+        }
+      }
+    },
+    {
+      "name": "gpu-small",
+      "local_queue": "finetune-queue",
+      "defaults": {
+        "accelerators": {
+          "nvidia.com/gpu": 1
+        }
+      },
+      "tolerations": [
+        {
+          "key": "taint-name",
+          "value": "cpu",
+          "effect": "NoSchedule"
+        }
+      ]
+    }
+  ]
+}

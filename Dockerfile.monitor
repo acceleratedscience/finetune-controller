@@ -1,0 +1,30 @@
+FROM registry.access.redhat.com/ubi8/python-311
+
+# disable python stdout buffer
+ENV PYTHONUNBUFFERED=1
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+USER root
+RUN dnf update -y && dnf clean all
+
+# Copy the requirements file and install dependencies
+COPY pyproject.toml README.md /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir .
+
+# Copy application code
+COPY . .
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Set up permissions
+RUN chown -R 1001:0 /app
+USER 1001
+
+# Run the application
+CMD ["python", "-m", "app.monitor_main"]

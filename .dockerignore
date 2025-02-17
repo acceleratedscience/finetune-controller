@@ -1,0 +1,16 @@
+# .venv
+# .env
+# __pycache__/
+# *.egg-info
+# build/
+# app.log
+
+# ignore everything
+*
+
+# dont ignore
+!app/
+!pyproject.toml
+!README.md
+!uv.lock
+!*config.json

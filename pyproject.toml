@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finetune-controller"
+version = "0.1.0"
+description = "Controller service for managing fine-tuning jobs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiofiles==24.1.0",
+    "colorlog==6.9.0",
+    "fastapi==0.115.8",
+    "kubeflow-training==1.8.1",
+    "kubernetes==31.0.0",
+    "pydantic==2.10.6",
+    "python-dotenv==1.0.1",
+    "python-multipart==0.0.20",
+    "PyYAML==6.0.2",
+    "requests==2.32.3",
+    "slowapi==0.1.9",
+    "uvicorn[standard]==0.34.0",
+    "pydantic-settings==2.7.1",
+    "aioboto3==13.3.0",
+    "types-aioboto3[s3]>=13.4.0",
+    "motor>=3.6.1",
+    "pandas>=2.2.3",
+    "python-jose[cryptography]>=3.3.0",
+    "httpx>=0.28.1",
+    "tenacity>=9.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py310"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.ruff.lint]
+ignore = ["F841", "E722"]

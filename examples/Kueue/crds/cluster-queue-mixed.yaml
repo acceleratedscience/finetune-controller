@@ -1,0 +1,35 @@
+# cluster-queue-mixed.yaml
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: all-compute-resources
+spec:
+  cohort: "general"
+  namespaceSelector: {} # match all.
+  resourceGroups:
+  - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
+    flavors:
+    - name: "cpu"
+      resources:
+      - name: "cpu"
+        nominalQuota: 8
+      - name: "memory"
+        nominalQuota: 32Gi
+      - name: nvidia.com/gpu
+        nominalQuota: 0  # No GPU resource for CPU-only nodes
+    - name: "gpu-medium"
+      resources:
+      - name: "cpu"
+        nominalQuota: 4
+      - name: "memory"
+        nominalQuota: 16Gi
+      - name: nvidia.com/gpu
+        nominalQuota: 1   # Total GPUs available for scheduling
+    - name: "gpu-large"
+      resources:
+      - name: "cpu"
+        nominalQuota: 96
+      - name: "memory"
+        nominalQuota: 348Gi
+      - name: nvidia.com/gpu
+        nominalQuota: 4  # Total GPUs available for scheduling
