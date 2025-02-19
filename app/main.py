@@ -15,9 +15,9 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     File,
-    Depends,
     WebSocket,
     WebSocketDisconnect,
     BackgroundTasks,
@@ -33,9 +33,11 @@ from app.core.config import settings
 from app.core.device_config import DeviceTypes
 from app.database.db import db_manager
 from app.schemas.db_schemas import (
+    JobsPage,
     DatabaseStatusEnum,
     PromotionStatus,
     DatasetPage,
+    JobStatus,
 )
 from app.schemas.kubeflow_schemas import TrainingJobStatus
 from app.schemas.jobs_schemas import (
@@ -44,7 +46,6 @@ from app.schemas.jobs_schemas import (
     PaginatedTableResponse,
     JobMetaData,
     DatasetInput,
-    DatasetMetaData,
     DatasetMeta,
     Dataset,
 )
@@ -59,9 +60,11 @@ from app.utils.naming import generate_short_uuid
 from app.utils.S3Handler import s3_handler
 from app.api.middleware import setup_middleware, limiter
 from app.api.custom_openapi import custom_openapi_jwt_auth
-from app.core.security import decode_jwt_header, UserJWT
+from app.core.security import UserJWT, JWTExtraInfo, dev_generate_token, verify_token
 from app.utils.stream_logger import LogStreamManager
 from app.tasks.promotion import PromotionTask
+
+# region --- Setup
 
 # Set up logging configuration
 setup_logging()
@@ -134,10 +137,87 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
-# -- General --
+# endregion
+# region --- JWT Validation
 
 
-@api_v1.get("/")
+def decode_request(
+    request: Request,
+) -> tuple[JWTExtraInfo, UserJWT] | tuple[None, None]:
+    # See OpenBridgeBasicMiddleware
+    jwt_data = getattr(request.state, "jwt_data", None)
+    jwt_decoded = getattr(request.state, "decoded_jwt", None)
+    return jwt_data, jwt_decoded
+
+
+def validate_user_access(jwt: UserJWT, db_record: JobStatus) -> None:
+    """Raises error if user not owner of resource"""
+    if jwt and db_record and jwt.user_id != db_record.user_id:
+        logger.warning(
+            f"user ({jwt.user_id}) tried to access restricted resource ({db_record.job_id})"
+        )
+        raise HTTPException(status_code=400, detail="Cannot access resource")
+
+
+# endregion
+# region --- Development
+
+
+if settings.ENVIRONMENT != "production":
+    # Bridge-user cookie for development
+    # See OpenBridgeBasicMiddleware for validation
+    @app.get("/auth/cookie", tags=["Auth"])
+    @limiter.limit("10/minute")
+    async def get_dev_bridge_user_cookie(
+        request: Request, response: Response, user=Query("default_user")
+    ):
+        """Return a spoofed bridge-user cookie for development"""
+
+        # Generate JWT token
+        token = await dev_generate_token(user)
+
+        # Wrap it in dict to mimmick the bridge-user cookie
+        bridge_user_cookie = json.dumps(
+            {
+                "config": None,
+                "resources": [],
+                "subject": "foobar",
+                "user_type": "group",
+                "token": token,
+            }
+        )
+
+        # Attach cookie
+        response.set_cookie(
+            key="bridge-user",
+            value=bridge_user_cookie,
+            httponly="True",
+            samesite="Strict",
+        )
+        return token
+
+    @app.get("/auth/generate", tags=["Auth"])
+    @limiter.limit("10/minute")
+    async def generate_token_auth(
+        request: Request, response: Response, user=Query("default_user")
+    ):
+        """Get authorization"""
+        token = await dev_generate_token(user)
+        return {"token": token}
+
+    @api_v1.get("/auth/verify", tags=["Auth"])
+    @limiter.limit("10/minute")
+    async def verify_token_auth(request: Request, response: Response, token: str):
+        """Get authorization"""
+        payload = await verify_token(token)
+        return payload
+
+
+# endregion
+# region --- General
+
+
+@app.get("/health")
 @api_v1.get("/health")
 @limiter.limit("20/minute")
 async def health(
@@ -152,11 +232,16 @@ async def health(
 @limiter.limit("20/minute")
 async def list_available_models(
     request: Request,
-    token_data: UserJWT = Depends(decode_jwt_header),
 ) -> dict[str, Any]:
     """Return the available options for the create-job form"""
-    # get all available models
-    models = user_available_models(token_data)
+    # validate access
+    jwt_data, jwt = decode_request(request)
+    if jwt_data and jwt:
+        # get all available models
+        models = user_available_models(jwt)
+    else:
+        models = user_available_models()
+
     # create model form data
     form_data = {}
     for model_name in models:
@@ -188,15 +273,15 @@ async def list_available_models(
 async def get_model_details(
     model: str,
     request: Request,
-    token_data: UserJWT = Depends(decode_jwt_header),
 ):
     """Get the optional parameters and their default values for a specific model"""
+    # validate access
+    jwt_data, jwt = decode_request(request)
     try:
-        if model not in user_available_models(token_data):
-            if token_data:
-                logger.warning(
-                    f"user ({token_data.user_id}) tried to access restricted resource ({model})"
-                )
+        if jwt_data and model not in user_available_models(jwt):
+            logger.warning(
+                f"user ({jwt.user_id}) tried to access restricted resource ({model})"
+            )
             raise HTTPException(status_code=404, detail=f"Model '{model}' not found")
         # Get the model class from JOB_MANIFESTS
         model_class = JOB_MANIFESTS.get(model)
@@ -253,7 +338,11 @@ async def stream_job(websocket: WebSocket, job_id: str, full_log=False, follow=T
         logger.error(f"Unexpected error in stream_job: {str(e)}")
 
 
-# -- Jobs --
+# endregion
+# region --- Jobs
+
+
+DEFAULT_USER = "default_user"
 
 
 # Start job
@@ -261,20 +350,18 @@ async def stream_job(websocket: WebSocket, job_id: str, full_log=False, follow=T
 # @limiter.limit("5/minute")
 async def start_job(
     request: Request,
-    token_data: UserJWT = Depends(decode_jwt_header),
     user_id: str = Form(
-        "default_user",
+        DEFAULT_USER,
         pattern=r"^[a-zA-Z0-9._@]+$",
         min_length=4,
         description="Used when BearerAuth not provided. when left blank: default_user",
     ),
+    # fmt: off
     job_name: str = Form(..., description="Name for job"),
     model: str = Form(..., description="Model to finetune"),  # type: ignore
     device: DeviceTypes = Form(..., description="Name of device to train on"),  # type: ignore
     task: TrainingTask = Form(..., description="Name of task type"),
-    arguments: str = Form(
-        "{}", description="Training arguments"
-    ),  # We'll need to parse this from JSON
+    arguments: str = Form("{}", description="Training arguments"),
     dataset_description: str | None = Form(
         "", description="Description for this dataset."
     ),
@@ -287,15 +374,17 @@ async def start_job(
     dataset: UploadFile | Literal[""] | None = File(
         None, description="Upload dataset from file"
     ),
+    # fmt: on
 ):
     """Start a finetune job"""
     # validate access
-    if token_data:
+    jwt_data, jwt = decode_request(request)
+    if jwt_data and jwt:
         # replace user_id with jwt provided user id
-        user_id = token_data.user_id
-        if model not in user_available_models(token_data):
+        user_id = jwt.user_id
+        if model not in user_available_models(jwt):
             logger.warning(
-                f"user ({token_data.user_id}) tried to access restricted resource ({model})"
+                f"user ({jwt.user_id}) tried to access restricted resource ({model})"
             )
             raise HTTPException(status_code=404, detail=f"Model '{model}' not found")
 
@@ -368,18 +457,21 @@ async def start_job(
     try:
         # Submit the PyTorchJob to the Kubeflow operator
         training_job = await task_builder(job_input, settings.NAMESPACE, dataset_input)
-
         logger.info(f"Job started successfully: {job_input.job_id}")
         return {"message": "Job started successfully", "job_id": job_input.job_id}
     except ApiException as e:
         logger.error(str(e))
+        dataset_info = _printable_dataset_info(dataset_input)
         raise HTTPException(
-            status_code=e.status, detail=f"Failed to start job: '{job_id}'"
+            status_code=e.status,
+            detail=f"Failed to start job {job_name} / {job_id}<br>{e}{dataset_info}",
         ) from e
     except Exception as e:
         logger.error(str(e))
+        dataset_info = _printable_dataset_info(dataset_input)
         raise HTTPException(
-            status_code=500, detail=f"Failed to start job: '{job_id}'"
+            status_code=500,
+            detail=f"Failed to start job {job_name} / {job_id}<br>{e}<br>{dataset_info}",
         ) from e
 
 
@@ -392,27 +484,35 @@ def _parse_arguments_input(arguments: str = Form(...)) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid JSON for arguments") from e
 
 
+def _printable_dataset_info(dataset_input):
+    """Format dataset information for error messages"""
+    dataset_info = {
+        k: v for k, v in dict(dataset_input).items() if v and k != "dataset_description"
+    }
+    dataset_info = "<br>".join([f"{k}: {v}" for k, v in dataset_info.items()])
+    return dataset_info
+
+
 # Paginated jobs for table
 @api_v1.get("/jobs", tags=["Jobs"])
 @limiter.limit("50/minute")
 async def get_user_jobs_page(
     request: Request,
-    token_data: UserJWT = Depends(decode_jwt_header),
-    user_id: str = Query(""),
+    user_id: str = Query(DEFAULT_USER),  # For debugging
     page: int = Query(1),  # Page number
     page_size: int = Query(10),  # Page size
     sort: str = Query(None),  # Sort key
-    query: str = Query(None),  # Filter results by query string
+    query: str = Query(None),  # Search string
     limit: str = Query(None),  # Limit results to list of indices, eg. ?limit=1,7,12
-    status: str = Query(None),  # Status filter
-    model_name: str = Query(None),  # Model filter
+    status: str = Query(None),  # Filter by status
+    model_name: str = Query(None),  # Filter by model_name
 ):
-    """Get the status of a finetune job"""
-
+    """Get one page of job statuses for a user"""
+    # validate access
+    jwt_data, jwt = decode_request(request)
     # Get user_id from JWT if provided
-    if token_data:
-        user_id = token_data.user_id
-
+    if jwt_data and jwt:
+        user_id = jwt.user_id
     try:
         logger.info(f"Getting jobs for user {user_id}")
 
@@ -421,7 +521,7 @@ async def get_user_jobs_page(
         limit = [int(x) for x in limit.split(",")] if limit else None
 
         # Get job information from database
-        jobs_data = await db_manager.get_user_jobs(
+        jobs_data: JobsPage = await db_manager.get_user_jobs(
             user_id, page, page_size, sort, query, limit, status, model_name
         )
 
@@ -477,6 +577,7 @@ async def get_user_jobs_page(
             pageSize=page_size,
             items=items,
         )
+
     except Exception as e:
         logger.error(str(e))
         raise HTTPException(
@@ -484,13 +585,20 @@ async def get_user_jobs_page(
         ) from e
 
 
-# Single job
+# Get gingle job
 @api_v1.get("/jobs/{job_id}", tags=["Jobs"])
 @limiter.limit("50/minute")
-async def get_job(request: Request, job_id: str):
+async def get_job(
+    request: Request,
+    job_id: str,
+):
     """Get the status of a finetune job"""
+    # validate access
+    jwt_data, jwt = decode_request(request)
     try:
         job_info = await db_manager.get_job(job_id)
+        validate_user_access(jwt, job_info)
+
         if not job_info:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
@@ -509,12 +617,18 @@ async def get_job(request: Request, job_id: str):
 # Metrics
 @api_v1.get("/jobs/{job_id}/metrics", tags=["Jobs"])
 @limiter.limit("50/minute")
-async def get_job_metrics(request: Request, job_id: str):
+async def get_job_metrics(
+    request: Request,
+    job_id: str,
+):
     """Get metrics from the metrics.json file for a specific job"""
     logger.info(f"requesting metrics for job id ({job_id})")
+    # validate access
+    jwt_data, jwt = decode_request(request)
     try:
         # Get job status
         job_info = await db_manager.get_job(job_id)
+        validate_user_access(jwt, job_info)
         if not job_info:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
@@ -551,13 +665,24 @@ async def promote_job(
     request: Request,
     job_id: str,
     background_tasks: BackgroundTasks,
-    token_data: UserJWT = Depends(decode_jwt_header),
 ):
     """Promote a job"""
+    # validate access
+    jwt_data, jwt = decode_request(request)
     try:
-        bucket_name = settings.S3_DEFAULT_DEPLOY_BUCKET.strip()
         # Get job status
         job_info = await db_manager.get_job(job_id)
+        validate_user_access(jwt, job_info)
+        # TODO: implement buckets for each user group
+        # if jwt_data:
+        #     # get bucket from users group id
+        #     bucket_name = jwt_data.group_id
+        # else:
+        #     # test ducket deployment
+        #     bucket_name = settings.S3_DEFAULT_DEPLOY_BUCKET.strip()
+
+        # use default s3 bucket
+        bucket_name = settings.S3_DEFAULT_DEPLOY_BUCKET.strip()
 
         # validate job
         if not job_info:
@@ -625,10 +750,14 @@ async def unpromote_job(
     request: Request,
     background_tasks: BackgroundTasks,
     job_id: str,
-    token_data: UserJWT = Depends(decode_jwt_header),
 ):
+    jwt_data, jwt = decode_request(request)
     # check db status
     job_info = await db_manager.get_job(job_id)
+
+    # validate access
+    validate_user_access(jwt, job_info)
+
     if not job_info:
         raise HTTPException(status_code=400, detail="Job not found")
     if not job_info.promoted == PromotionStatus.COMPLETED:
@@ -657,10 +786,13 @@ async def unpromote_job(
 
 # Action -- cancel
 @api_v1.post("/jobs/{job_id}/cancel", tags=["Jobs"])
-async def cancel_job(job_id: str):
+async def cancel_job(request: Request, job_id: str):
     """Cancel a job"""
+    jwt_data, jwt = decode_request(request)
     try:
         job_info = await db_manager.get_job(job_id)
+        validate_user_access(jwt, job_info)
+
         if job_info.status in TrainingJobStatus.stopped_states:
             raise HTTPException(status_code=409, detail="Item already cancelled")
         # Delete the PyTorchJob
@@ -722,9 +854,14 @@ async def cancel_job(job_id: str):
 
 # Action -- delete
 @api_v1.delete("/jobs/{job_id}", tags=["Jobs"])
-async def delete_job(job_id: str):
+async def delete_job(request: Request, job_id: str):
+    """Delete a users job db record"""
+    jwt_data, jwt = decode_request(request)
+
     logger.debug(f"deleting job {job_id}")
     job_info = await db_manager.get_job(job_id)
+
+    validate_user_access(jwt, job_info)
 
     # Not found
     if not job_info:
@@ -748,93 +885,135 @@ async def delete_job(job_id: str):
     return {"message": "Job deleted successfully", "job_id": job_id}
 
 
-@api_v1.get("/datasets/{user_id}/all", tags=["Datasets"])
-async def get_user_datasets_all(user_id: str):
-    """Get all datasets for a user, mneant to pupulate a dropdown"""
+# endregion
+# region --- Datasets
+
+
+@api_v1.get("/datasets/all", tags=["Datasets"])
+async def get_user_datasets_all(request: Request, user_id: str = Query(DEFAULT_USER)):
+    """Get all datasets for a user, to populate a dropdown"""
+    # validate user
+    jwt_data, jwt = decode_request(request)
+    if jwt and jwt_data:
+        user_id = jwt.user_id
+
     datasets = await db_manager.get_user_datasets_all(user_id)
     return datasets
 
 
-@api_v1.get("/datasets/{user_id}", tags=["Datasets"])
+@api_v1.get("/datasets", tags=["Datasets"])
 async def get_user_datasets_page(
     request: Request,
-    user_id: str,
-    token_data: UserJWT = Depends(decode_jwt_header),
+    user_id: str = Query(DEFAULT_USER),
     page: int = Query(1),  # Page number
     page_size: int = Query(10),  # Page size
     sort: str = Query(None),  # Sort key
-    query: str = Query(None),  # Filter results by query string
+    query: str = Query(None),  # Search string
     limit: str = Query(None),  # Limit results to list of indices, eg. ?limit=1,7,12
 ):
+    """Get one page of datasets for a user"""
+
     # Get user_id from JWT if provided
-    if token_data:
-        user_id = token_data.user_id
+    jwt_data, jwt = decode_request(request)
+    if jwt:
+        user_id = jwt.user_id
 
-    print(33, user_id)
+    try:
+        # Parse limit query parameter into list
+        # ?limit=1,2,3 --> [1,2,3]
+        limit = [int(x) for x in limit.split(",")] if limit else None
 
-    # Gete datasets information from databse
-    datasets_data: DatasetPage = await db_manager.get_user_datasets_page(
-        user_id, page, page_size, sort, query, limit
-    )
-
-    # Compile list of jobs as return data
-    items = []
-    for item in datasets_data.items:
-        items.append(
-            Dataset(
-                index_=item.index,
-                id=item.id,
-                name=item.dataset_name,
-                # uploaded_at=item.uploaded_at # missing
-                #
-                meta_=DatasetMeta(
-                    error=None,
-                    note=item.description,
-                    data=DatasetMetaData(
-                        s3_uri=item.dataset.s3_uri,
-                        http_url=item.dataset.http_url,
-                    ),
-                ),
-            )
+        # Gete datasets information from databse
+        datasets_data: DatasetPage = await db_manager.get_user_datasets_page(
+            user_id, page, page_size, sort, query, limit
         )
 
-    return PaginatedTableResponse(
-        total=datasets_data.total,
-        totalPages=datasets_data.total_pages,
-        resultIndices=[],
-        page=page,
-        pageSize=page_size,
-        items=items,
-    )
+        # Compile list of jobs as return data
+        items = []
+        for item in datasets_data.items:
+            # This holds the http_url & s3_uri
+            # we filter out blank values
+            _metadata = dict(item.dataset)
+            _metadata = {k: v for k, v in _metadata.items() if v}
+
+            items.append(
+                Dataset(
+                    index_=item.index,
+                    id=item.id,
+                    name=item.dataset_name,
+                    created_at=item.created_at,  # missing
+                    #
+                    meta_=DatasetMeta(
+                        error=None,
+                        note=item.description,
+                        data=_metadata,
+                    ),
+                )
+            )
+
+        return PaginatedTableResponse(
+            total=datasets_data.total,
+            totalPages=datasets_data.total_pages,
+            resultIndices=[],
+            page=page,
+            pageSize=page_size,
+            items=items,
+        )
+
+    except Exception as e:
+        logger.error(str(e))
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get datasets: {str(e)}"
+        ) from e
 
 
-@api_v1.delete("/dataset/{dataset_id}", tags=["Datasets"])
-async def delete_datasets(dataset_id: str):
-    job_info = await db_manager.delete_dataset(dataset_id)
+@api_v1.delete("/datasets/{dataset_id}", tags=["Datasets"])
+async def delete_datasets(
+    request: Request, dataset_id: str, user_id: str = Query(DEFAULT_USER)
+):
+    logger.debug(f"deleting dataset {dataset_id} for user {user_id}")
+    jwt_data, jwt = decode_request(request)
+    if jwt:
+        user_id = jwt.user_id
+
+    job_info = await db_manager.delete_dataset(user_id, dataset_id)
     return job_info
 
 
-# @api_v1.put("/dataset/{user_id}", tags=["Datasets"])
-# async def update_datasets(user_id: str, job_id: str, dataset_id: str):
+# @api_v1.put("/dataset", tags=["Datasets"])
+# async def update_datasets(
+#     request: Request,
+#     job_id: str,
+#     dataset_id: str,
+#     user_id: str = Query(DEFAULT_USER),
+# ):
+#     jwt_data, jwt = decode_request(request)
+#     if jwt:
+#         user_id = jwt.user_id
 #     dataset = await db_manager.update_dataset(user_id, dataset_id, job_id)
 #     return dataset
 
 
-# @api_v1.post("/dataset/{user_id}", tags=["Datasets"])
+# @api_v1.post("/dataset", tags=["Datasets"])
 # async def insert_datasets(
-#     user_id: str,
+#     request: Request,
 #     job_id: str,
 #     dataset: DatasetTypes,
 #     dataset_name: str,
 #     description: str,
+#     user_id: str = Query(DEFAULT_USER),
 # ):
+#     jwt_data, jwt = decode_request(request)
+#     if jwt:
+#         user_id = jwt.user_id
 #     dataset = await db_manager.insert_dataset(
 #         user_id, job_id, dataset, dataset_name, description
 #     )
 #     return dataset
 
 
-# -- Admin --
+# endregion
+# region --- Admin
 
 
 @api_v1.get("/admin/artifacts/{job_id}", tags=["Admin"])
@@ -842,13 +1021,13 @@ async def delete_datasets(dataset_id: str):
 async def get_artifacts(
     request: Request,
     job_id: str,
-    user_id: str = Query(""),
-    token_data: UserJWT = Depends(decode_jwt_header),
+    user_id: str = Query(DEFAULT_USER),
 ):
     """Download artifacts for a specific job as a zip file"""
-    if token_data:
+    jwt_data, jwt = decode_request(request)
+    if jwt:
         # replace query with jwt user_id
-        user_id = token_data.user_id
+        user_id = jwt.user_id
     logger.info(
         f"User ({user_id}), requesting artifacts download for job id ({job_id})"
     )
@@ -908,13 +1087,13 @@ async def get_artifacts(
 async def get_artifact_urls(
     request: Request,
     job_id: str,
-    user_id: str = Query(""),
-    token_data: UserJWT = Depends(decode_jwt_header),
+    user_id: str = Query(DEFAULT_USER),
 ):
     """Get presigned URLs for all artifacts in a job"""
-    if token_data:
+    jwt_data, jwt = decode_request(request)
+    if jwt:
         # replace user id with jwt user id
-        user_id = token_data.user_id
+        user_id = jwt.user_id
     logger.info(f"User ({user_id}), requesting artifact URLs for job id ({job_id})")
     try:
         # Get job information from database
@@ -1057,14 +1236,17 @@ app.include_router(api_v1)
 
 
 # ------------------------
+# endregion
+# region --- Methods
 
 
-def user_available_models(token: UserJWT):
+def user_available_models(token: UserJWT | None = None):
     """Get all available models"""
     all_models: list = list(JOB_MANIFESTS.keys())
     # Filter models based on user available models.
     # If the user has specific available models, only include those.
-    if token:
+    # get all models if running local for testing
+    if token and settings.ENVIRONMENT != "local":
         return [
             user_model
             for user_model in token.available_models
@@ -1079,6 +1261,8 @@ async def get_model(model_name: str) -> BaseFineTuneModel:
     model_class = JOB_MANIFESTS.get(model_name)
     return model_class() if model_class else None  # type: ignore
 
+
+# endregion
 
 if __name__ == "__main__":
     import uvicorn

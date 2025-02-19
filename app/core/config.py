@@ -28,10 +28,14 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL_CORS: list[str] = Field(default_factory=list)
     # security - Introspection URL and OpenBridge credentials
+    OPENBRIDGE_JWK_URL: str | None = None
     OPENBRIDGE_INTROSPECTION_URL: str | None = None
     OPENBRIDGE_CLIENT_ID: str | None = None
     OPENBRIDGE_CLIENT_SECRET: SecretStr | None = None
     OPENBRIDGE_API_KEY: SecretStr | None = None  # Placeholder, Not Implemented.
+    # test keys
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
     # Disable introspection for local development only
     DEV_DISABLE_INTROSPECTION: bool = False
     # worker config

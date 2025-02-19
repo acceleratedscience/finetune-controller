@@ -89,19 +89,12 @@ class Job(BaseModel):
 # -- Dataset --
 
 
-class DatasetMetaData(BaseModel):
-    """Metadata for dataset."""
-
-    s3_uri: str = None
-    http_url: str = None
-
-
 class DatasetMeta(BaseModel):
     """Metadata for the jobs table"""
 
     error: str | None = None
     note: str | None = None
-    data: DatasetMetaData = DatasetMetaData()
+    data: dict = {}  # s3_uri / http_url
 
 
 class Dataset(BaseModel):
@@ -110,7 +103,7 @@ class Dataset(BaseModel):
     index_: int  # Index used by table in frontend
     id: str
     name: str
-    # uploaded_at: datetime
+    created_at: datetime
     meta_: DatasetMeta = DatasetMeta()
 
 

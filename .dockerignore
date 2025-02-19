@@ -13,4 +13,4 @@
 !pyproject.toml
 !README.md
 !uv.lock
-!*config.json
+!*config*.json
