@@ -663,9 +663,11 @@ class MongoDBManager:
             logger.error(str(e))
         return None
 
-    async def delete_dataset(self, dataset: str) -> bool:
+    async def delete_dataset(self, user_id, dataset: str) -> bool:
         """Delete a dataset from the database."""
-        result = await self.datasets_collection.delete_one({"_id": ObjectId(dataset)})
+        result = await self.datasets_collection.delete_one(
+            {"_id": ObjectId(dataset), "user_id": user_id}
+        )
         return result.deleted_count > 0
 
 
