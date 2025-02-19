@@ -29,9 +29,9 @@ jobs:
       run: |
         uv sync
 
-    - name: Run pre-commit
-      run: |
-        pre-commit run --all-files
+    - uses: pre-commit/action@v3.0.0
+      env:
+        SKIP: no-commit-to-branch
 
     # - name: Run tests
     #   run: |
