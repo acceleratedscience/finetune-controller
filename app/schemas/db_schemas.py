@@ -106,7 +106,7 @@ class JobStatus(BaseModel):
     task: str
     framework: str
     arguments: dict[str, Any] | None = None
-    dataset_uri: str | None = None
+    dataset_id: str | None = None
     atrifacts_uri: str | None = None
     destination_uri: str | None = None
     dataset_name: str | None = None

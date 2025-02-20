@@ -898,7 +898,8 @@ async def get_user_datasets_all(request: Request, user_id: str = Query(DEFAULT_U
         user_id = jwt.user_id
 
     datasets = await db_manager.get_user_datasets_all(user_id)
-    return datasets
+    # return the dataset detail but not the s3 path
+    return [dataset.model_dump(exclude={"dataset": {"s3_uri"}}) for dataset in datasets]
 
 
 @api_v1.get("/datasets", tags=["Datasets"])
@@ -931,10 +932,8 @@ async def get_user_datasets_page(
         # Compile list of jobs as return data
         items = []
         for item in datasets_data.items:
-            # This holds the http_url & s3_uri
-            # we filter out blank values
-            _metadata = dict(item.dataset)
-            _metadata = {k: v for k, v in _metadata.items() if v}
+            # only return url if available, not s3_path
+            _metadata = item.dataset.model_dump(exclude={"s3_uri"})
 
             items.append(
                 Dataset(
@@ -942,7 +941,7 @@ async def get_user_datasets_page(
                     id=item.id,
                     name=item.dataset_name,
                     created_at=item.created_at,  # missing
-                    #
+                    job_ref=item.job_ref,
                     meta_=DatasetMeta(
                         error=None,
                         note=item.description,

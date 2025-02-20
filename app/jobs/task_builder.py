@@ -37,15 +37,17 @@ async def task_builder(
             )
     elif dataset_input.dataset_url:
         # Dataset from URL to upload
-        await stream_dataset_url(
+        dataset_doc = await stream_dataset_url(
             job, str(dataset_input.dataset_url), dataset_input.dataset_description
         )
         # await upload_dataset_url(job, str(dataset_input.dataset_url))
     elif dataset_input.dataset_file:
         # Dataset from file upload
-        await upload_dataset_file(
+        dataset_doc = await upload_dataset_file(
             job, dataset_input.dataset_file, dataset_input.dataset_description
         )
+    else:
+        dataset_doc = None
 
     # create artifacts assests uri (where training data is stored)
     job.s3_artifacts_uri = await s3_handler.get_artifacts_uri_string(
@@ -66,7 +68,7 @@ async def task_builder(
         task=job.model.task.value,
         framework=job.model.framework.value,
         arguments=job.arguments,
-        dataset_uri=job.s3_uri if job.s3_uri else None,
+        dataset_id=dataset_doc.id if dataset_doc else None,
         atrifacts_uri=job.s3_artifacts_uri,
         dataset_name=job.model.dataset_info.dataset_name
         if job.model.dataset_info.dataset_name
