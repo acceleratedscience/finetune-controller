@@ -22,6 +22,7 @@ async def task_builder(
     dataset_input: DatasetInput,
 ):
     """Create the finetune job task and run it"""
+    dataset_doc = None
     if dataset_input.dataset_id:
         # use dataset already uploaded
         db_info = await db_manager.update_dataset(
