@@ -22,6 +22,7 @@ async def task_builder(
     dataset_input: DatasetInput,
 ):
     """Create the finetune job task and run it"""
+    dataset_doc = None
     if dataset_input.dataset_id:
         # use dataset already uploaded
         db_info = await db_manager.update_dataset(
@@ -46,8 +47,6 @@ async def task_builder(
         dataset_doc = await upload_dataset_file(
             job, dataset_input.dataset_file, dataset_input.dataset_description
         )
-    else:
-        dataset_doc = None
 
     # create artifacts assests uri (where training data is stored)
     job.s3_artifacts_uri = await s3_handler.get_artifacts_uri_string(
