@@ -344,8 +344,13 @@ def verify_secret_key():
         )
 
 
-async def dev_generate_token(user: str) -> dict:
+async def dev_generate_token(user: str, include_models: list[str] = None) -> dict:
     """Generate a JWT token with specific claims for development."""
+    if include_models:
+        # include only specific models
+        user_models = include_models
+    else:
+        user_models = list(JOB_MANIFESTS.keys())
     try:
         # Verify secret key is configured
         verify_secret_key()
@@ -357,7 +362,7 @@ async def dev_generate_token(user: str) -> dict:
         jwt_claims = {
             "sub": user,
             "aud": "local",
-            "scp": list(JOB_MANIFESTS.keys()),  # add all models to jwt for testing
+            "scp": user_models,  # available models
             "exp": expire,
             "iat": datetime.now(timezone.utc),
         }

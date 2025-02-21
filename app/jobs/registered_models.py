@@ -9,8 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 # Combine built-in models with custom models
+# JOB_MANIFESTS: dict[str, BaseFineTuneModel] = {
+#     mnist.MNIST.__name__: mnist.MNIST,
+# }
 JOB_MANIFESTS: dict[str, BaseFineTuneModel] = {
-    mnist.MNIST.__name__: mnist.MNIST,
+    mnist.MNIST.model_fields.get("name").get_default(): mnist.MNIST,
 }
 
 
@@ -23,7 +26,8 @@ def load_model_modules():
     for model_name, model_class in custom_models.items():
         # Use the model's defined name if available, otherwise use the class name
         try:
-            name = getattr(model_class, "name", model_name)
+            # name = getattr(model_class, "name", model_name)
+            name = model_class.model_fields.get("name").get_default()
             if name in JOB_MANIFESTS:
                 logger.warning(f"Model name '{name}' already registered! skipping...")
                 continue

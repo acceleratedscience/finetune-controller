@@ -54,7 +54,7 @@ class BaseFineTuneModel(BaseModel, ABC):
         extra="ignore"  # or 'ignore', 'forbid'
     )
     # model setup
-    # name: str = Field(..., min_length=4)
+    name: str = Field(..., min_length=4, pattern=r"^[a-zA-Z0-9._@]+$")
     image: str
     image_pull_secret: str | None = None
     command: list[str]
