@@ -103,7 +103,7 @@ class DatasetMeta(BaseModel):
 
     error: str | None = None
     note: str | None = None
-    data: dict = {}  # s3_uri / http_url
+    data: dict | None = None
 
 
 class Dataset(BaseModel):
@@ -111,7 +111,7 @@ class Dataset(BaseModel):
 
     index_: int  # Index used by table in frontend
     id: str
-    name: str
+    dataset_name: str
     created_at: datetime
     job_ref: list[str]
     meta_: DatasetMeta = DatasetMeta()

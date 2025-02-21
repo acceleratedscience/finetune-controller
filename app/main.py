@@ -969,6 +969,7 @@ async def get_user_datasets_page(
                             "dataset_name",
                             "description",
                             "created_at",
+                            "job_ref",
                         },
                     ),
                 )
