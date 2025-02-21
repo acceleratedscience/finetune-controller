@@ -199,13 +199,23 @@ if settings.ENVIRONMENT != "production":
     @app.get("/auth/generate", tags=["Auth"])
     @limiter.limit("10/minute")
     async def generate_token_auth(
-        request: Request, response: Response, user=Query("default_user")
+        request: Request,
+        response: Response,
+        user: str = Query("default_user"),
+        include_models: str = Query(""),
     ):
-        """Get authorization"""
-        token = await dev_generate_token(user)
+        """Generate JWT
+
+        Args:
+            user (str, optional): user to authenticate. Defaults to "default_user".
+            include_models (str, optional): specific models to include. Defaults to all available models.
+        """
+        models = [m.strip() for m in include_models.split(",") if m]
+        logger.warning(models)
+        token = await dev_generate_token(user, models)
         return {"token": token}
 
-    @api_v1.get("/auth/verify", tags=["Auth"])
+    @app.get("/auth/verify", tags=["Auth"])
     @limiter.limit("10/minute")
     async def verify_token_auth(request: Request, response: Response, token: str):
         """Get authorization"""
@@ -347,7 +357,7 @@ DEFAULT_USER = "default_user"
 
 # Start job
 @api_v1.post("/jobs", tags=["Jobs"])
-# @limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def start_job(
     request: Request,
     user_id: str = Form(
@@ -392,7 +402,7 @@ async def start_job(
     model_arguments = _parse_arguments_input(arguments)
 
     model_name = model
-    job_id = f"{model_name.lower().replace('_', '-')}-{generate_short_uuid()}"  # Generate unique job ID
+    job_id = f"{model_name.strip().lower().replace('_', '-')}-{generate_short_uuid()}"  # Generate unique job ID
 
     # check dataset input type
     if dataset_id:
@@ -1245,12 +1255,13 @@ def user_available_models(token: UserJWT | None = None):
     # Filter models based on user available models.
     # If the user has specific available models, only include those.
     # get all models if running local for testing
-    if token and settings.ENVIRONMENT != "local":
-        return [
+    if token:
+        user_models = [
             user_model
             for user_model in token.available_models
             if user_model in all_models
         ]
+        return user_models
     # Access all models if jwt not set. Authorization handled by Middleware
     return all_models
 

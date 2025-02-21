@@ -41,6 +41,7 @@ class MNISTConfig(TrainingArguments):
 class MNIST(BaseFineTuneModel):
     """Finetune Job Spec for MNIST"""
 
+    name: str = "MNIST"  # model name must match inference name to work
     description: str = "Example MNIST model for fine-tuning"
     project_url: str = "https://github.com/acceleratedscience/model-foobar"
     image: str = "quay.io/brian_duenas/mnist:latest"
