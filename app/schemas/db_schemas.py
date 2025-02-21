@@ -28,7 +28,7 @@ class DatasetTypes(BaseModel):
 class DatasetModel(BaseModel):
     model_config = ConfigDict(
         # Fields may be added by database query pipeline:
-        # - index
+        # - index_
         extra="allow",
         protected_namespaces=(),
         populate_by_name=True,  # Allow "_id" alias for "id"
@@ -85,7 +85,7 @@ class JobStatusMetadata(BaseModel):
 class JobStatus(BaseModel):
     model_config = ConfigDict(
         # Fields may be added by database query pipeline:
-        # - index
+        # - index_
         # - start_time
         # - end_time
         # - duration

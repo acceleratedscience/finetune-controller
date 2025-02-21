@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, List
 
 from pydantic import BaseModel, field_validator, HttpUrl
 
@@ -37,7 +37,16 @@ class JobInput(BaseModel):
 
 
 # ------------------------
-# Frontend Models
+# Request Schemas
+# ------------------------
+
+
+class RequestBodyAction(BaseModel):
+    job_ids: List[str]
+
+
+# ------------------------
+# Frontend Schemas
 # ------------------------
 
 

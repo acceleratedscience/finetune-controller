@@ -44,6 +44,7 @@ from app.schemas.jobs_schemas import (
     Job,
     JobInput,
     PaginatedTableResponse,
+    RequestBodyAction,
     JobMetaData,
     DatasetInput,
     DatasetMeta,
@@ -546,7 +547,7 @@ async def get_user_jobs_page(
             )
             items.append(
                 Job(
-                    index_=job.index,
+                    index_=job.index_,
                     id=job.job_id,
                     name=job.job_name,
                     promoted=job.promoted,
@@ -952,20 +953,23 @@ async def get_user_datasets_page(
         # Compile list of jobs as return data
         items = []
         for item in datasets_data.items:
-            # only return url if available, not s3_path
-            _metadata = item.dataset.model_dump(exclude={"s3_uri"})
+            meta_ = DatasetMeta(
+                error=None,
+                note=item.description,
+                data=None,
+            )
 
             items.append(
                 Dataset(
-                    index_=item.index,
-                    id=item.id,
-                    name=item.dataset_name,
-                    created_at=item.created_at,  # missing
-                    job_ref=item.job_ref,
-                    meta_=DatasetMeta(
-                        error=None,
-                        note=item.description,
-                        data=_metadata,
+                    meta_=meta_,
+                    **item.model_dump(
+                        include={
+                            "index_",
+                            "id",
+                            "dataset_name",
+                            "description",
+                            "created_at",
+                        },
                     ),
                 )
             )
