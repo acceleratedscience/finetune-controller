@@ -91,7 +91,7 @@ class Job(BaseModel):
     start_time: datetime | None
     end_time: datetime | None
     duration: int | None
-    promotion_path: str | None
+    dataset_id: str | None
     meta_: JobMeta = JobMeta()
 
 

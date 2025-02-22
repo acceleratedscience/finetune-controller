@@ -535,6 +535,7 @@ async def get_user_jobs_page(
         jobs_data: JobsPage = await db_manager.get_user_jobs(
             user_id, page, page_size, sort, query, limit, status, model_name
         )
+        print(jobs_data)
 
         # Compile list of jobs as return data
         items = []
@@ -558,7 +559,7 @@ async def get_user_jobs_page(
                     start_time=job.start_time,
                     end_time=job.end_time,
                     duration=job.duration,
-                    promotion_path=promotion_path,  # User for table of deployed models
+                    dataset_id=job.dataset_id,
                     #
                     meta_={
                         "error": None,
