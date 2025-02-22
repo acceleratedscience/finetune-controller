@@ -953,9 +953,12 @@ async def get_user_datasets_page(
         # Compile list of jobs as return data
         items = []
         for item in datasets_data.items:
+            # Create a note that combines the description and the list of related job names
             meta_note = item.description
             if len(item.job_ref_names) > 0:
                 meta_note += "<br><b>Related jobs:</b> " + ", ".join(item.job_ref_names)
+
+            # Assemble metadata
             meta_ = DatasetMeta(error=None, note=meta_note, data=None)
 
             items.append(
@@ -968,7 +971,6 @@ async def get_user_datasets_page(
                             "dataset_name",
                             "description",
                             "created_at",
-                            "job_ref_names",
                         },
                     ),
                 )
