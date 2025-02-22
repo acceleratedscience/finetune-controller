@@ -113,7 +113,7 @@ class Dataset(BaseModel):
     id: str
     dataset_name: str
     created_at: datetime
-    job_ref: list[str]
+    job_ref_names: list[str]
     meta_: DatasetMeta = DatasetMeta()
 
 

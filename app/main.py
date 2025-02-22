@@ -535,7 +535,6 @@ async def get_user_jobs_page(
         jobs_data: JobsPage = await db_manager.get_user_jobs(
             user_id, page, page_size, sort, query, limit, status, model_name
         )
-        print(jobs_data)
 
         # Compile list of jobs as return data
         items = []
@@ -954,11 +953,10 @@ async def get_user_datasets_page(
         # Compile list of jobs as return data
         items = []
         for item in datasets_data.items:
-            meta_ = DatasetMeta(
-                error=None,
-                note=item.description,
-                data=None,
-            )
+            meta_note = item.description
+            if len(item.job_ref_names) > 0:
+                meta_note += "<br><b>Related jobs:</b> " + ", ".join(item.job_ref_names)
+            meta_ = DatasetMeta(error=None, note=meta_note, data=None)
 
             items.append(
                 Dataset(
@@ -970,7 +968,7 @@ async def get_user_datasets_page(
                             "dataset_name",
                             "description",
                             "created_at",
-                            "job_ref",
+                            "job_ref_names",
                         },
                     ),
                 )
