@@ -626,6 +626,20 @@ async def get_job(
         ) from e
 
 
+async def get_key_url(data: list[dict], key="metrics.csv"):
+    """
+    Retrieve the URL for a given key from a list of dictionaries.
+
+    :param data: List of dictionaries containing 'key' and 'url'.
+    :param key: The key to search for.
+    :return: The corresponding URL if found, otherwise None.
+    """
+    for item in data:
+        if item.get("key") == key:
+            return item.get("url")
+    return None
+
+
 # Metrics
 @api_v1.get("/jobs/{job_id}/metrics", tags=["Jobs"])
 @limiter.limit("50/minute")
@@ -662,7 +676,16 @@ async def get_job_metrics(
             # 100 items not to overload frontend
             job_metrics.metrics.reverse()
             job_metrics.metrics = job_metrics.metrics[:100]
-            return job_metrics
+
+            metrics_data = job_metrics.model_dump()
+            try:
+                # Get presigned URLs for artifacts
+                urls = await s3_handler.get_presigned_urls(job_metrics.user_id, job_id)
+                metrics_data["metrics_url"] = await get_key_url(urls, "metrics.csv")
+            except Exception as e:
+                logger.error(f"Could not get presigned urls for job {job_id}: {str(e)}")
+                metrics_data["metrics_url"] = None
+            return metrics_data
     except HTTPException as e:
         raise e
     except Exception as e:
