@@ -471,14 +471,14 @@ async def start_job(
         logger.info(f"Job started successfully: {job_input.job_id}")
         return {"message": "Job started successfully", "job_id": job_input.job_id}
     except ApiException as e:
-        logger.error(str(e))
+        logger.error(str(e), exc_info=True)
         dataset_info = _printable_dataset_info(dataset_input)
         raise HTTPException(
             status_code=e.status,
             detail=f"Failed to start job {job_name} / {job_id}<br>{e}{dataset_info}",
         ) from e
     except Exception as e:
-        logger.error(str(e))
+        logger.error(str(e), exc_info=True)
         dataset_info = _printable_dataset_info(dataset_input)
         raise HTTPException(
             status_code=500,
