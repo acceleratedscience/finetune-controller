@@ -53,7 +53,7 @@ class LogStreamManager:
                 await self.send_message("Error: Timeout waiting for job to start")
                 return False
 
-            await self.send_message("Info: Waiting for job to start training..")
+            await self.send_message("Info: Waiting for job to start training...")
             await asyncio.sleep(10)
 
     async def send_message(self, message: str):
@@ -125,7 +125,7 @@ class LogStreamManager:
                 if not line:
                     await asyncio.sleep(1)  # Avoid busy-waiting
                     continue
-                await self.send_message(line.decode("utf-8"))
+                await self.send_message(line.decode("utf-8").strip())
 
         except ApiException as e:
             if e.status == 404:
@@ -133,8 +133,18 @@ class LogStreamManager:
             else:
                 raise
 
+    async def _debug_test_message(self):
+        while True:
+            await asyncio.sleep(1)
+            msg = []
+            for i in range(10):
+                msg.append(f"This is a debug message {asyncio.get_event_loop().time()}")
+            await self.send_message("\n".join(msg))
+
     async def run(self):
         """Main execution flow"""
+        # await self._debug_test_message()
+
         try:
             if not await self.wait_for_job_start():
                 return

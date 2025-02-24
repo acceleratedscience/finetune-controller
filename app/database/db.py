@@ -344,18 +344,18 @@ class MongoDBManager:
             {
                 "$setWindowFields": {
                     "sortBy": {sort: sort_order},
-                    "output": {"index": {"$documentNumber": {}}},
+                    "output": {"index_": {"$documentNumber": {}}},
                 }
             },
             # Make index start from zero
-            {"$addFields": {"index": {"$subtract": ["$index", 1]}}},
+            # {"$addFields": {"index_": {"$subtract": ["$index", 1]}}},
             # Sort by the requested field
             {"$sort": {sort: sort_order}},
         ]
 
         # This lets user limit the results to only the selected jobs
         if limit is not None:
-            pipeline.append({"$match": {"index": {"$in": limit}}})
+            pipeline.append({"$match": {"index_": {"$in": limit}}})
 
         # Pagination
         pipeline = pipeline + [
@@ -609,18 +609,39 @@ class MongoDBManager:
             {
                 "$setWindowFields": {
                     "sortBy": {sort: sort_order},
-                    "output": {"index": {"$documentNumber": {}}},
+                    "output": {"index_": {"$documentNumber": {}}},
                 }
             },
             # Make index start from zero
-            {"$addFields": {"index": {"$subtract": ["$index", 1]}}},
+            # {"$addFields": {"index_": {"$subtract": ["$index", 1]}}},
             # Sort by the requested field
             {"$sort": {sort: sort_order}},
+            # Parse the job_ref field to get the job names from the job table
+            {
+                "$lookup": {
+                    "from": "jobs",
+                    "localField": "job_ref",
+                    "foreignField": "job_id",
+                    "as": "job_ref_details",
+                }
+            },
+            {
+                "$addFields": {
+                    "job_ref_names": {
+                        "$map": {
+                            "input": "$job_ref_details",
+                            "as": "job",
+                            "in": "$$job.job_name",
+                        }
+                    }
+                }
+            },
+            {"$unset": "job_ref_details"},
         ]
 
         # This lets user limit the results to only the selected items
         if limit is not None:
-            pipeline.append({"$match": {"index": {"$in": limit}}})
+            pipeline.append({"$match": {"index_": {"$in": limit}}})
 
         # Pagination
         pipeline = pipeline + [

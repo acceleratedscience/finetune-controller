@@ -44,6 +44,7 @@ from app.schemas.jobs_schemas import (
     Job,
     JobInput,
     PaginatedTableResponse,
+    JobIdsRequest,
     JobMetaData,
     DatasetInput,
     DatasetMeta,
@@ -470,14 +471,14 @@ async def start_job(
         logger.info(f"Job started successfully: {job_input.job_id}")
         return {"message": "Job started successfully", "job_id": job_input.job_id}
     except ApiException as e:
-        logger.error(str(e))
+        logger.error(str(e), exc_info=True)
         dataset_info = _printable_dataset_info(dataset_input)
         raise HTTPException(
             status_code=e.status,
             detail=f"Failed to start job {job_name} / {job_id}<br>{e}{dataset_info}",
         ) from e
     except Exception as e:
-        logger.error(str(e))
+        logger.error(str(e), exc_info=True)
         dataset_info = _printable_dataset_info(dataset_input)
         raise HTTPException(
             status_code=500,
@@ -546,9 +547,9 @@ async def get_user_jobs_page(
             )
             items.append(
                 Job(
-                    index_=job.index,
-                    id=job.job_id,
-                    name=job.job_name,
+                    index_=job.index_,
+                    job_id=job.job_id,
+                    job_name=job.job_name,
                     promoted=job.promoted,
                     model_name=job.model_name,
                     queue_pos=job.metadata.queue_pos,
@@ -557,12 +558,13 @@ async def get_user_jobs_page(
                     start_time=job.start_time,
                     end_time=job.end_time,
                     duration=job.duration,
-                    promotion_path=promotion_path,  # User for table of deployed models
+                    dataset_id=job.dataset_id,
                     #
                     meta_={
                         "error": None,
                         "note": None,
                         "data": JobMetaData(
+                            job_name=job.job_name,
                             job_id=job.job_id,
                             model_name=job.model_name,
                             promotion_path=promotion_path,
@@ -595,7 +597,7 @@ async def get_user_jobs_page(
         ) from e
 
 
-# Get gingle job
+# Get single job
 @api_v1.get("/jobs/{job_id}", tags=["Jobs"])
 @limiter.limit("50/minute")
 async def get_job(
@@ -863,36 +865,46 @@ async def cancel_job(request: Request, job_id: str):
 
 
 # Action -- delete
-@api_v1.delete("/jobs/{job_id}", tags=["Jobs"])
-async def delete_job(request: Request, job_id: str):
-    """Delete a users job db record"""
+@api_v1.delete("/jobs/delete", tags=["Jobs"])
+async def delete_job(request: Request, body: JobIdsRequest):
+    """Delete one    ore more jobs from the database"""
+
+    # Validate access
     jwt_data, jwt = decode_request(request)
 
-    logger.debug(f"deleting job {job_id}")
-    job_info = await db_manager.get_job(job_id)
+    # Endpoint return object
+    output = {}
 
-    validate_user_access(jwt, job_info)
+    for job_id in body.job_ids:
+        logger.debug(f"Deleting job {job_id}")
+        job_info = await db_manager.get_job(job_id)
 
-    # Not found
-    if not job_info:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        validate_user_access(jwt, job_info)
 
-    # Still running
-    if job_info.status in TrainingJobStatus.running_states:
-        raise HTTPException(status_code=400, detail="Job is still running")
+        # Not found
+        if not job_info:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
-    # Delete operations
-    if job_info.promoted == PromotionStatus.COMPLETED and job_info.destination_uri:
-        # delete promoted bucket files
-        await s3_handler.cleanup_uri_items(job_info.destination_uri)
-    if job_info.atrifacts_uri:
-        # delete finetune bucket artifacts
-        await s3_handler.cleanup_uri_items(job_info.atrifacts_uri)
-    # delete metrics if any
-    await db_manager.delete_metrics(job_id)
-    # remove from database
-    await db_manager.delete_job(job_id)
-    return {"message": "Job deleted successfully", "job_id": job_id}
+        # Still running
+        if job_info.status in TrainingJobStatus.running_states:
+            raise HTTPException(status_code=400, detail="Job is still running")
+
+        # Delete operations
+        if job_info.promoted == PromotionStatus.COMPLETED and job_info.destination_uri:
+            # delete promoted bucket files
+            await s3_handler.cleanup_uri_items(job_info.destination_uri)
+        if job_info.atrifacts_uri:
+            # delete finetune bucket artifacts
+            await s3_handler.cleanup_uri_items(job_info.atrifacts_uri)
+        # delete metrics if any
+        await db_manager.delete_metrics(job_id)
+        # remove from database
+        await db_manager.delete_job(job_id)
+
+        # Compile return
+        output["job_id"] = {"message": "Jobs deleted successfully"}
+
+    return output
 
 
 # endregion
@@ -900,6 +912,7 @@ async def delete_job(request: Request, job_id: str):
 
 
 @api_v1.get("/datasets/all", tags=["Datasets"])
+@limiter.limit("30/minute")
 async def get_user_datasets_all(request: Request, user_id: str = Query(DEFAULT_USER)):
     """Get all datasets for a user, to populate a dropdown"""
     # validate user
@@ -913,6 +926,7 @@ async def get_user_datasets_all(request: Request, user_id: str = Query(DEFAULT_U
 
 
 @api_v1.get("/datasets", tags=["Datasets"])
+@limiter.limit("30/minute")
 async def get_user_datasets_page(
     request: Request,
     user_id: str = Query(DEFAULT_USER),
@@ -942,20 +956,34 @@ async def get_user_datasets_page(
         # Compile list of jobs as return data
         items = []
         for item in datasets_data.items:
-            # only return url if available, not s3_path
-            _metadata = item.dataset.model_dump(exclude={"s3_uri"})
+            # Assemble metadata
+            _meta_data = {
+                "Id": item.id,
+                "Related jobs": (
+                    ", ".join(item.job_ref_names)
+                    if len(item.job_ref_names) > 0
+                    else "-"
+                ),
+            }
+            if item.dataset.http_url:
+                _meta_data["Source"] = item.dataset.http_url
+            meta_ = DatasetMeta(
+                error=None,
+                note=item.description,
+                data=_meta_data,
+            )
 
             items.append(
                 Dataset(
-                    index_=item.index,
-                    id=item.id,
-                    name=item.dataset_name,
-                    created_at=item.created_at,  # missing
-                    job_ref=item.job_ref,
-                    meta_=DatasetMeta(
-                        error=None,
-                        note=item.description,
-                        data=_metadata,
+                    meta_=meta_,
+                    **item.model_dump(
+                        include={
+                            "index_",
+                            "id",
+                            "dataset_name",
+                            "description",
+                            "created_at",
+                        },
                     ),
                 )
             )

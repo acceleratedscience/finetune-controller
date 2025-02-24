@@ -37,7 +37,16 @@ class JobInput(BaseModel):
 
 
 # ------------------------
-# Frontend Models
+# Request Schemas
+# ------------------------
+
+
+class JobIdsRequest(BaseModel):
+    job_ids: list[str]
+
+
+# ------------------------
+# Frontend Schemas
 # ------------------------
 
 
@@ -48,6 +57,7 @@ class JobMetaData(BaseModel):
     """Metadata for a PyTorch job"""
 
     # Job specific
+    job_name: str = None
     job_id: str = None
     model_name: str = None
     promotion_path: str = None
@@ -72,8 +82,8 @@ class Job(BaseModel):
     """Finetuning job"""
 
     index_: int  # Index used by table in frontend
-    id: str
-    name: str
+    job_id: str
+    job_name: str
     status: str
     status_merged: str
     promoted: str
@@ -82,7 +92,7 @@ class Job(BaseModel):
     start_time: datetime | None
     end_time: datetime | None
     duration: int | None
-    promotion_path: str | None
+    dataset_id: str | None
     meta_: JobMeta = JobMeta()
 
 
@@ -94,7 +104,7 @@ class DatasetMeta(BaseModel):
 
     error: str | None = None
     note: str | None = None
-    data: dict = {}  # s3_uri / http_url
+    data: dict | None = None
 
 
 class Dataset(BaseModel):
@@ -102,9 +112,9 @@ class Dataset(BaseModel):
 
     index_: int  # Index used by table in frontend
     id: str
-    name: str
+    dataset_name: str
     created_at: datetime
-    job_ref: list[str]
+    job_ref_names: list[str] | None = None
     meta_: DatasetMeta = DatasetMeta()
 
 

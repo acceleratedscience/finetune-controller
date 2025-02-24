@@ -56,6 +56,8 @@ class PyTorchJobDeployer:
         # additional pod labels / metadata
         labels = {
             # job data
+            "job.owner": str(job.user_id),
+            "job.db-collection": str(settings.MONGODB_DATABASE),
             "job.model-name": str(job.model_name),
             "job.instance-type": str(selected_worker),
             "job.accelerators": str(model.accelerator_count * model.cluster_nodes),

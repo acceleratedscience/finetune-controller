@@ -6,6 +6,7 @@ from kubernetes.client.rest import ApiException
 
 from app.core.config import settings
 from app.database.db import db_manager
+from app.schemas.db_schemas import JobStatus
 from app.schemas.kubeflow_schemas import KubeflowStatusEnum, TrainingJobStatus
 from app.utils.kf_config import kubeflow_api
 from app.utils.S3Handler import s3_handler
@@ -103,10 +104,10 @@ class JobMonitor:
         conditions: KubeflowOrgV1JobCondition,
         lifecycle: KubeflowOrgV1JobStatus,
         queue_position: int | None = None,
-    ):
+    ) -> JobStatus | None:
         """Update job status in database"""
         try:
-            await db_manager.update_job_status(
+            return await db_manager.update_job_status(
                 job_id=job_id,
                 status=TrainingJobStatus.map_status(status),
                 metadata={
@@ -146,7 +147,7 @@ class JobMonitor:
                         continue
 
                     conditions = job.status.conditions[-1]
-                    status = conditions.type
+                    status: str = conditions.type
 
                     # Handle suspended jobs that have actually started
                     if status == KubeflowStatusEnum.suspended and job.status.start_time:
@@ -159,8 +160,15 @@ class JobMonitor:
                             self._ignore_jobs.add(job_id)
                             continue
 
+                    # check if state changed
+                    prev_job_info = await db_manager.get_job(job_id)
+                    if prev_job_info and prev_job_info.status.lower() != status.lower():
+                        logger.info(
+                            f"Job {job_id} status changed from {prev_job_info.status} to {status}"
+                        )
+
                     # Update status in database
-                    await self._update_job_status(
+                    job_info = await self._update_job_status(
                         job_id,
                         status,
                         conditions,
@@ -168,8 +176,6 @@ class JobMonitor:
                         queue_positions.get(job_id),
                     )
 
-                    # Get job info for metrics processing
-                    job_info = await db_manager.get_job(job_id)
                     if job_info:
                         # Process metrics for both running and completed jobs
                         is_completed = status in TrainingJobStatus.stopped_states
