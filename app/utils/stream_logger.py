@@ -125,7 +125,6 @@ class LogStreamManager:
                 if not line:
                     await asyncio.sleep(1)  # Avoid busy-waiting
                     continue
-                print(line)
                 await self.send_message(line.decode("utf-8").strip())
 
         except ApiException as e:
@@ -134,7 +133,7 @@ class LogStreamManager:
             else:
                 raise
 
-    async def _debug(self):
+    async def _debug_test_message(self):
         while True:
             await asyncio.sleep(1)
             msg = []
@@ -144,7 +143,7 @@ class LogStreamManager:
 
     async def run(self):
         """Main execution flow"""
-        # await self._debug()
+        # await self._debug_test_message()
 
         try:
             if not await self.wait_for_job_start():

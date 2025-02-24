@@ -41,7 +41,7 @@ class JobInput(BaseModel):
 # ------------------------
 
 
-class RequestBodyAction(BaseModel):
+class JobIdsRequest(BaseModel):
     job_ids: list[str]
 
 

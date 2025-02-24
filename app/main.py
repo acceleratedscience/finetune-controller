@@ -44,7 +44,7 @@ from app.schemas.jobs_schemas import (
     Job,
     JobInput,
     PaginatedTableResponse,
-    RequestBodyAction,
+    JobIdsRequest,
     JobMetaData,
     DatasetInput,
     DatasetMeta,
@@ -865,9 +865,9 @@ async def cancel_job(request: Request, job_id: str):
 
 
 # Action -- delete
-@api_v1.post("/jobs/delete", tags=["Jobs"])
-async def delete_job(request: Request, body: RequestBodyAction):
-    """Delete one ore more jobs from the database"""
+@api_v1.delete("/jobs/delete", tags=["Jobs"])
+async def delete_job(request: Request, body: JobIdsRequest):
+    """Delete one    ore more jobs from the database"""
 
     # Validate access
     jwt_data, jwt = decode_request(request)
@@ -957,17 +957,20 @@ async def get_user_datasets_page(
         items = []
         for item in datasets_data.items:
             # Assemble metadata
+            _meta_data = {
+                "Id": item.id,
+                "Related jobs": (
+                    ", ".join(item.job_ref_names)
+                    if len(item.job_ref_names) > 0
+                    else "-"
+                ),
+            }
+            if item.dataset.http_url:
+                _meta_data["Source"] = item.dataset.http_url
             meta_ = DatasetMeta(
                 error=None,
                 note=item.description,
-                data={
-                    "Id": item.id,
-                    "Related jobs": (
-                        ", ".join(item.job_ref_names)
-                        if len(item.job_ref_names) > 0
-                        else "-"
-                    ),
-                },
+                data=_meta_data,
             )
 
             items.append(
