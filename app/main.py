@@ -548,8 +548,8 @@ async def get_user_jobs_page(
             items.append(
                 Job(
                     index_=job.index_,
-                    id=job.job_id,
-                    name=job.job_name,
+                    job_id=job.job_id,
+                    job_name=job.job_name,
                     promoted=job.promoted,
                     model_name=job.model_name,
                     queue_pos=job.metadata.queue_pos,
@@ -564,6 +564,7 @@ async def get_user_jobs_page(
                         "error": None,
                         "note": None,
                         "data": JobMetaData(
+                            job_name=job.job_name,
                             job_id=job.job_id,
                             model_name=job.model_name,
                             promotion_path=promotion_path,
@@ -596,7 +597,7 @@ async def get_user_jobs_page(
         ) from e
 
 
-# Get gingle job
+# Get single job
 @api_v1.get("/jobs/{job_id}", tags=["Jobs"])
 @limiter.limit("50/minute")
 async def get_job(
