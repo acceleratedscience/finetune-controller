@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List
+from typing import Any
 
 from pydantic import BaseModel, field_validator, HttpUrl
 
@@ -42,7 +42,7 @@ class JobInput(BaseModel):
 
 
 class RequestBodyAction(BaseModel):
-    job_ids: List[str]
+    job_ids: list[str]
 
 
 # ------------------------
@@ -57,6 +57,7 @@ class JobMetaData(BaseModel):
     """Metadata for a PyTorch job"""
 
     # Job specific
+    job_name: str = None
     job_id: str = None
     model_name: str = None
     promotion_path: str = None
@@ -81,8 +82,8 @@ class Job(BaseModel):
     """Finetuning job"""
 
     index_: int  # Index used by table in frontend
-    id: str
-    name: str
+    job_id: str
+    job_name: str
     status: str
     status_merged: str
     promoted: str
