@@ -61,7 +61,7 @@ class MongoDBManager:
             # Get datasets collection
             self.datasets_collection = self.db.datasets
             # Get archived jobs collection
-            self.archived_jobs_collection = self.db.archived_jobs_collection
+            self.archived_jobs_collection = self.db.archived_jobs
             if self.client:
                 await self._ensure_indexes()
             logger.debug("MongoDB manager initialized successfully")
