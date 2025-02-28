@@ -336,12 +336,18 @@ async def get_model_details(
 
 
 @api_v1.websocket("/logs/{job_id}")
-async def stream_job(websocket: WebSocket, job_id: str, full_log=True, follow=True):
+async def stream_job(
+    websocket: WebSocket,
+    job_id: str,
+    full_log: bool = False,
+    follow: bool = True,
+    last_lines: int = 100,
+):
     """WebSocket endpoint handler"""
     logger.debug(f"Connecting WebSocket for job {job_id}")
     await websocket.accept()
 
-    stream_manager = LogStreamManager(websocket, job_id, full_log, follow)
+    stream_manager = LogStreamManager(websocket, job_id, full_log, follow, last_lines)
     try:
         await stream_manager.run()
     except WebSocketDisconnect:
