@@ -350,7 +350,17 @@ async def dev_generate_token(user: str, include_models: list[str] = None) -> dic
         # include only specific models
         user_models = include_models
     else:
-        user_models = list(JOB_MANIFESTS.keys())
+        # aggregate all models inference names for available models
+        all_models = list(JOB_MANIFESTS.keys())
+        user_models = []
+        for model in all_models:
+            inference_model_name = (
+                JOB_MANIFESTS.get(model)
+                .model_fields.get("inference_name", None)
+                .get_default()
+            )
+            if inference_model_name and inference_model_name not in user_models:
+                user_models.append(inference_model_name)
     try:
         # Verify secret key is configured
         verify_secret_key()
