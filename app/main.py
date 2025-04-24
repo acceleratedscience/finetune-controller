@@ -203,7 +203,9 @@ if settings.ENVIRONMENT != "production":
         request: Request,
         response: Response,
         user: str = Query("default_user"),
-        include_models: str = Query(""),
+        include_models: str = Query(
+            "", description="Comma separated list of models to include"
+        ),
     ):
         """Generate JWT
 
@@ -1310,15 +1312,19 @@ app.include_router(api_v1)
 def user_available_models(token: UserJWT | None = None):
     """Get all available models"""
     all_models: list = list(JOB_MANIFESTS.keys())
-    # Filter models based on user available models.
-    # If the user has specific available models, only include those.
-    # get all models if running local for testing
+    # !important: the users available models are set in the JWT token, the finetune models `inference_name` must match the inference model name in the token
+    # If the user has specific available models in subscription jwt, only include those.
     if token:
-        user_models = [
-            user_model
-            for user_model in token.available_models
-            if user_model in all_models
-        ]
+        user_models = []
+        for model in all_models:
+            # match a finetune model with the available inference model subscription name
+            inference_model_name = (
+                JOB_MANIFESTS.get(model)
+                .model_fields.get("inference_name", None)
+                .get_default()
+            )
+            if inference_model_name and inference_model_name in token.available_models:
+                user_models.append(model)
         return user_models
     # Access all models if jwt not set. Authorization handled by Middleware
     return all_models

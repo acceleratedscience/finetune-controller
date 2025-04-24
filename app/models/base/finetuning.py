@@ -55,6 +55,9 @@ class BaseFineTuneModel(BaseModel, ABC):
     )
     # model setup
     name: str = Field(..., min_length=4, pattern=r"^[a-zA-Z0-9._@]+$")
+    inference_name: str | None = Field(
+        default=None, description="Name of the model to be used for inference"
+    )
     image: str
     image_pull_secret: str | None = None
     command: list[str]
