@@ -1040,13 +1040,17 @@ async def get_user_datasets_page(
 async def delete_datasets(
     request: Request, dataset_id: str, user_id: str = Query(DEFAULT_USER)
 ):
-    logger.debug(f"deleting dataset {dataset_id} for user {user_id}")
     jwt_data, jwt = decode_request(request)
     if jwt:
         user_id = jwt.user_id
-
-    job_info = await db_manager.delete_dataset(user_id, dataset_id)
-    return job_info
+    dataset_info = await db_manager.get_user_dataset(user_id, dataset_id)
+    if not dataset_info:
+        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+    logger.debug(f"deleting dataset {dataset_id} for user {user_id}")
+    if dataset_info.dataset.s3_uri:
+        await s3_handler.cleanup_uri_items(dataset_info.dataset.s3_uri)
+    await db_manager.delete_dataset(user_id, dataset_id)
+    return {"message": "Dataset deleted successfully"}
 
 
 # @api_v1.put("/dataset", tags=["Datasets"])
