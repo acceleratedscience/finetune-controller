@@ -197,6 +197,11 @@ type: Opaque
 
 ```
 
+Example for base 64 command in terminal
+```bash
+echo -n "VALUE" | base64
+```
+
 ### Setup Pull secrets
 
 Example docker pull secret config

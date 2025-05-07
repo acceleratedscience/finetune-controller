@@ -563,6 +563,20 @@ class MongoDBManager:
             ]  # Pydantic serialization
         return []
 
+    async def get_user_dataset(
+        self, user_id: str, dataset_id: str
+    ) -> DatasetModel | None:
+        """Retrieve a single dataset for a specific user."""
+        try:
+            dataset = await self.datasets_collection.find_one(
+                {"_id": ObjectId(dataset_id), "user_id": user_id}
+            )
+            if dataset:
+                return DatasetModel(**dataset)  # Pydantic serialization
+        except Exception as e:
+            logger.error(str(e))
+        return None
+
     async def get_user_datasets_page(
         self,
         user_id: str,
