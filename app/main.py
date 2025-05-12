@@ -341,7 +341,7 @@ async def get_model_details(
 async def stream_job(
     websocket: WebSocket,
     job_id: str,
-    full_log: bool = False,
+    full_log: bool = True,
     follow: bool = True,
     last_lines: int = 100,
 ):
