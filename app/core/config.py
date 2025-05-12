@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # server
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
     API_V1_STR: str = "/api/v1"
-    LOG_STREAM_SEARCH_STRING: str = "Epoch"  # Log viewer search string
+    LOG_STREAM_SEARCH_STRING: str | None = "Epoch"  # Log viewer search string
     # cluster
     NAMESPACE: str
     # CORS
