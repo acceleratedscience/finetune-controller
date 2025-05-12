@@ -349,7 +349,14 @@ async def stream_job(
     logger.debug(f"Connecting WebSocket for job {job_id}")
     await websocket.accept()
 
-    stream_manager = LogStreamManager(websocket, job_id, full_log, follow, last_lines)
+    stream_manager = LogStreamManager(
+        websocket,
+        job_id,
+        full_log,
+        follow,
+        last_lines,
+        search_string=settings.LOG_STREAM_SEARCH_STRING,
+    )
     try:
         await stream_manager.run()
     except WebSocketDisconnect:
