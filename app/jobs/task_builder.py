@@ -32,6 +32,7 @@ async def task_builder(
             logger.debug(f"reusing dataset: {db_info.dataset.s3_uri}")
             job.s3_uri = db_info.dataset.s3_uri
             job.model.dataset_info.dataset_name = db_info.dataset_name
+            dataset_doc = db_info
         else:
             raise HTTPException(
                 status_code=404, detail="Selected dataset not available"
