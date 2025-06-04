@@ -329,6 +329,8 @@ class CustomConfig(TrainingArguments):
 
 Let's examine the MNIST example to understand the complete implementation:
 
+> see the code for the containerized image [here](https://github.com/brian316/mnist-example)
+
 ### MNIST Configuration Class
 
 ```python
