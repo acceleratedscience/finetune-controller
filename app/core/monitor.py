@@ -153,7 +153,7 @@ class JobMonitor:
                             f"Job {job_id} disappeared from API, probably canceled by user."
                         )
                         await send_slack_notification(
-                            f"Job `{job_info.status}`: `{job_info.job_name} ({job_id})` by `{job_info.user_id}`\nModel: `{job_info.model_name}` | Started: `{job_info.created_at}`"
+                            f"Job `{job_info.status.value}`: `{job_info.job_name} ({job_id})` by `{job_info.user_id}`\nModel: `{job_info.model_name}` | Started: `{job_info.created_at}`"
                         )
                         self.notified_queued_jobs.discard(job_id)
 
@@ -185,7 +185,7 @@ class JobMonitor:
                     prev_job_info = await db_manager.get_job(job_id)
                     if prev_job_info and prev_job_info.status.lower() != status.lower():
                         logger.info(
-                            f"Job {job_id} status changed from {prev_job_info.status} to {status}"
+                            f"Job {job_id} status changed from {prev_job_info.status.value} to {status}"
                         )
                         # Notify if job in queue
                         if (
@@ -194,7 +194,7 @@ class JobMonitor:
                             and job_id not in self.notified_queued_jobs
                         ):
                             await send_slack_notification(
-                                f"Job `{TrainingJobStatus.map_status(status)}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Queue Position: `{queue_positions.get(job_id, 'N/A')}`"
+                                f"Job `{TrainingJobStatus.map_status(status).value}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Queue Position: `{queue_positions.get(job_id, 'N/A')}`"
                             )
                             self.notified_queued_jobs.add(job_id)
                         # Notify on start
@@ -204,12 +204,12 @@ class JobMonitor:
                             != KubeflowStatusEnum.running.lower()
                         ):
                             await send_slack_notification(
-                                f"Job `{TrainingJobStatus.map_status(status)}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Started: `{prev_job_info.created_at}`"
+                                f"Job `{TrainingJobStatus.map_status(status).value}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Started: `{prev_job_info.created_at}`"
                             )
                         # Notify on stop
                         elif status in TrainingJobStatus.stopped_states:
                             await send_slack_notification(
-                                f"Job `{TrainingJobStatus.map_status(status)}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Started: `{prev_job_info.created_at}` | Ended: `{job.status.completion_time}`"
+                                f"Job `{TrainingJobStatus.map_status(status).value}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Started: `{prev_job_info.created_at}` | Ended: `{job.status.completion_time}`"
                             )
                             self.notified_queued_jobs.discard(job_id)
 
