@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     MONGODB_DATABASE: str = "default"
     # job monitor
     JOB_MONITOR_INTERVAL: int = 2
+    SLACK_WEBHOOK_URL: str | None = None
     DEV_LOCAL_JOB_MONITOR: bool = False
     AWS_JOB_SYNC_INTERVAL: int = 60
     # aws configuration

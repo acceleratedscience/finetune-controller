@@ -7,10 +7,15 @@ from kubernetes.client.rest import ApiException
 from app.core.config import settings
 from app.database.db import db_manager
 from app.schemas.db_schemas import JobStatus
-from app.schemas.kubeflow_schemas import KubeflowStatusEnum, TrainingJobStatus
+from app.schemas.kubeflow_schemas import (
+    KubeflowStatusEnum,
+    TrainingJobStatus,
+    DatabaseStatusEnum,
+)
 from app.utils.kf_config import kubeflow_api
 from app.utils.S3Handler import s3_handler
 from app.utils.kueue_helpers import get_kueue_queue, get_kubeflow_queue
+from app.utils.slack_helpers import send_slack_notification
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,8 @@ class JobMonitor:
     def __init__(self):
         self.stop_monitoring = False
         self.monitoring_task = None
+        self.active_jobs = set()
+        self.notified_queued_jobs = set()
 
     async def _get_queue_info(self) -> dict[str, int]:
         """Get queue information with fallback"""
@@ -128,13 +135,33 @@ class JobMonitor:
         while not self.stop_monitoring:
             try:
                 # Get current state from Kubeflow API
-                jobs = kubeflow_api.list_jobs(namespace=settings.NAMESPACE)
+                api_jobs = {
+                    job.metadata.name: job
+                    for job in kubeflow_api.list_jobs(namespace=settings.NAMESPACE)
+                }
+                current_job_ids = set(api_jobs.keys())
+
+                # Find jobs that have disappeared
+                disappeared_jobs = self.active_jobs - current_job_ids
+                for job_id in disappeared_jobs:
+                    job_info = await db_manager.get_job(job_id)
+                    if (
+                        job_info
+                        and job_info.status not in TrainingJobStatus.running_states
+                    ):
+                        logger.warning(
+                            f"Job {job_id} disappeared from API, probably canceled by user."
+                        )
+                        await send_slack_notification(
+                            f"Job `{job_info.status}`: `{job_info.job_name} ({job_id})` by `{job_info.user_id}`\nModel: `{job_info.model_name}` | Started: `{job_info.created_at}`"
+                        )
+                        self.notified_queued_jobs.discard(job_id)
+
+                self.active_jobs = current_job_ids
                 queue_positions = await self._get_queue_info()
 
-                for job in jobs:
-                    job_id = job.metadata.name
-
-                    if not job.status.conditions:
+                for job_id, job in api_jobs.items():
+                    if not job.status or not job.status.conditions:
                         logger.warning(f"Job conditions not ready for {job_id}")
                         await asyncio.sleep(0.1)
                         continue
@@ -160,6 +187,31 @@ class JobMonitor:
                         logger.info(
                             f"Job {job_id} status changed from {prev_job_info.status} to {status}"
                         )
+                        # Notify if job in queue
+                        if (
+                            TrainingJobStatus.map_status(status)
+                            == DatabaseStatusEnum.queued
+                            and job_id not in self.notified_queued_jobs
+                        ):
+                            await send_slack_notification(
+                                f"Job `{TrainingJobStatus.map_status(status)}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Queue Position: `{queue_positions.get(job_id, 'N/A')}`"
+                            )
+                            self.notified_queued_jobs.add(job_id)
+                        # Notify on start
+                        elif (
+                            status == KubeflowStatusEnum.running
+                            and prev_job_info.status.lower()
+                            != KubeflowStatusEnum.running.lower()
+                        ):
+                            await send_slack_notification(
+                                f"Job `{TrainingJobStatus.map_status(status)}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Started: `{prev_job_info.created_at}`"
+                            )
+                        # Notify on stop
+                        elif status in TrainingJobStatus.stopped_states:
+                            await send_slack_notification(
+                                f"Job `{TrainingJobStatus.map_status(status)}`: `{prev_job_info.job_name} ({job_id})` by `{prev_job_info.user_id}`\nModel: `{prev_job_info.model_name}` | Started: `{prev_job_info.created_at}` | Ended: `{job.status.completion_time}`"
+                            )
+                            self.notified_queued_jobs.discard(job_id)
 
                     # Update status in database
                     job_info = await self._update_job_status(
@@ -188,6 +240,7 @@ class JobMonitor:
                                 logger.error(
                                     f"Job {job_id} failed. Manual investigation required."
                                 )
+                            self.active_jobs.discard(job_id)
 
             except Exception as e:
                 logger.error(f"Error in job monitoring loop: {e}", exc_info=True)
