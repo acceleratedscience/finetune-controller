@@ -28,8 +28,10 @@ class PyTorchJobDeployer:
         selected_worker = job.device
         model_command = model.run_cmd()
         # create done.txt to signal sync container to quit
+        log_file = f"{model.checkpoint_mount}/output.log"
+        # append the log file to the model command and create done.txt to signal completion
         model_command[-1] = (
-            f"{model_command[-1]} && touch {model.checkpoint_mount}/done.txt"
+            f"({model_command[-1]}) 2>&1 | tee {log_file}; exit_code=${{PIPESTATUS[0]}}; touch {model.checkpoint_mount}/done.txt && exit $exit_code"
         )
         image_pull_secret = (
             [{"name": model.image_pull_secret}] if model.image_pull_secret else []
@@ -122,8 +124,9 @@ class PyTorchJobDeployer:
         }
 
         # file patterns to include in sync
+        sync_patterns = model.store_asset_patterns + ["output.log"]
         include_patterns = " ".join(
-            f"--include '{pattern}'" for pattern in model.store_asset_patterns
+            f"--include '{pattern}'" for pattern in sync_patterns
         )
 
         # volume to sync metrics and artifacts
