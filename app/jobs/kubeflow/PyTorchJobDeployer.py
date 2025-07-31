@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from kubernetes import client
 
@@ -20,7 +21,7 @@ class PyTorchJobDeployer:
     def create_pytorch_job(
         self,
         job: JobInput,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Create PyTorchJob with S3 backup sidecar."""
         # model vars
         model = job.model
@@ -35,8 +36,10 @@ class PyTorchJobDeployer:
         )
         # get defined resource worker node info from `config.json`
         worker_node = device_configuration.get_worker(selected_worker)
+        if not worker_node:
+            raise ValueError(f"Worker '{selected_worker}' not found in configuration.")
         # get device tolerations
-        tolerations: dict = worker_node.get_tolerations()
+        tolerations = worker_node.get_tolerations()
         # get default device training resources
         resource_limits = worker_node.defaults.get_resources()
         # update default resources with new ones
@@ -261,7 +264,7 @@ class PyTorchJobDeployer:
             body=job_manifest,
         )
 
-    def get_job_status(self, job_id: str) -> dict:
+    def get_job_status(self, job_id: str) -> dict[str, Any]:
         """Get the status of a PyTorchJob."""
         return self.k8s_custom_api.get_namespaced_custom_object(
             group="kubeflow.org",
@@ -271,7 +274,7 @@ class PyTorchJobDeployer:
             name=job_id,
         )
 
-    def delete_job(self, job_id: str) -> dict:
+    def delete_job(self, job_id: str) -> dict[str, Any]:
         """Delete a PyTorchJob."""
         return self.k8s_custom_api.delete_namespaced_custom_object(
             group="kubeflow.org",

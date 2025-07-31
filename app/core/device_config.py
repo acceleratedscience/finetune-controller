@@ -41,7 +41,7 @@ class Worker(BaseModel):
     defaults: Defaults = Defaults()
     tolerations: list[Toleration] | None = None
 
-    def get_tolerations(self):
+    def get_tolerations(self) -> list[dict[str, str]]:
         if self.tolerations:
             return [tol.model_dump() for tol in self.tolerations]
         return []
@@ -70,11 +70,11 @@ class WorkersConfig(BaseModel):
 class APIConfiguration(BaseModel):
     workers: WorkersConfig = WorkersConfig()
 
-    def get_worker(self, name) -> Worker:
+    def get_worker(self, name) -> Worker | None:
         """Main method to get a worker. Do not access a worker directly"""
         return self.workers.get_worker(name)
 
-    def list_workers(self) -> Worker:
+    def list_workers(self) -> list[str]:
         return self.workers.list_workers()
 
 
@@ -104,6 +104,6 @@ def load_config() -> APIConfiguration:
 device_configuration: APIConfiguration = load_config()
 
 # enum of all available models names
-DeviceTypes: list[str] = Enum(
+DeviceTypes = Enum(
     "DeviceTypes", {name: name for name in device_configuration.list_workers()}
 )
